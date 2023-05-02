@@ -118,7 +118,7 @@ def create_column_metadata(cols):
     return metadata.to_list(mdata)
 
 
-def get_table_columns(snowflake_conn, tables):
+def get_table_columns(snowflake_conn, dbname, tables):
     """Get column definitions of a list of tables
 
        It's using SHOW commands instead of INFORMATION_SCHEMA views because information_schemas views are slow
@@ -131,6 +131,8 @@ def get_table_columns(snowflake_conn, tables):
 
         LOGGER.info('Getting column information for %s...', table)
 
+        # Perform use database call first
+        use_database = f'USE DATABASE {dbname}'
         # Get column data types by SHOW commands
         show_columns = f'SHOW COLUMNS IN TABLE {table}'
 
@@ -159,7 +161,7 @@ def get_table_columns(snowflake_conn, tables):
                   ,PARSE_JSON(show_columns."data_type"):scale::number       AS numeric_scale
               FROM show_columns
         """
-        queries.extend([show_columns, select])
+        queries.extend([use_database, show_columns, select])
 
         # Run everything in one transaction
         columns = snowflake_conn.query(queries, max_records=SHOW_COMMAND_MAX_ROWS)
@@ -171,7 +173,9 @@ def get_table_columns(snowflake_conn, tables):
 def discover_catalog(snowflake_conn, config):
     """Returns a Catalog describing the structure of the database."""
     tables = config.get('tables').split(',')
-    sql_columns = get_table_columns(snowflake_conn, tables)
+    sql_columns = get_table_columns(snowflake_conn,
+                                    dbname=config['dbname'],
+                                    tables=tables)
 
     table_info = {}
     columns = []
