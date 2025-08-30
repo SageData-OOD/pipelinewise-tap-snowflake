@@ -49,7 +49,8 @@ def validate_config(config):
 
     possible_authentication_keys =  [
       'password',
-      'private_key_path'
+      'private_key_path',
+      'private_key'
     ]
     if not any(config.get(k, None) for k in possible_authentication_keys):
         errors.append(
@@ -75,28 +76,32 @@ class SnowflakeConnection:
 
     def get_private_key(self):
         """
-        Get private key from the right location
+        Get private key from either file path or direct string
         """
+        try:
+            encoded_passphrase = self.connection_config['private_key_passphrase'].encode()
+        except KeyError:
+            encoded_passphrase = None
+
         if self.connection_config.get('private_key_path'):
-            try:
-                encoded_passphrase = self.connection_config['private_key_passphrase'].encode()
-            except KeyError:
-                encoded_passphrase = None
-
             with open(self.connection_config['private_key_path'], 'rb') as key:
-                p_key= serialization.load_pem_private_key(
-                        key.read(),
-                        password=encoded_passphrase,
-                        backend=default_backend()
-                    )
+                key_data = key.read()
+        elif self.connection_config.get('private_key'):
+            key_data = self.connection_config['private_key'].encode()
+        else:
+            return None
 
-            pkb = p_key.private_bytes(
-                    encoding=serialization.Encoding.DER,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption())
-            return pkb
+        p_key = serialization.load_pem_private_key(
+            key_data,
+            password=encoded_passphrase,
+            backend=default_backend()
+        )
 
-        return None
+        pkb = p_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption())
+        return pkb
 
     def open_connection(self):
         """Connect to snowflake database"""
